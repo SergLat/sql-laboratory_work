@@ -1,0 +1,204 @@
+Задание № 1 
+В каких городах больше одного аэропорта?
+-- Необходимо сгрупировать таблицу по колонке city, использовать агрегатную функцию count по коду аэропорта и вывести те, у которые значение больше 1 (Домашняя работа №3 Задание №2).
+
+select a.city as "Город", count(a.airport_code) as "Кол-во аэропортов" 
+from airports a 
+group by a.city 
+having count(a.airport_code) > 1
+
+Задание № 2 
+В каких аэропортах есть рейсы, выполняемые самолетом с максимальной дальностью перелета?
+-- Делаем селект из таблицы aircraft, сортируем по убыванию столбец range и узнаем код самолета у которого самая большая дальность полета. Дописал limit 1, чтобы выводило только одну строку.
+-- Заворачиваем в подзапрос. Соединяем таблицу airports a2 (код аэропорта)  = flights f (аэропорт отправления) и в условии пишем код самолета = подзапрос. В селект основного запроса выводим код самолета, код аэропорта, название аэропорта и город. 
+-- Через оператор distinct получаем уникальные значения кодов кодов аэропортов.   
+
+select distinct f.aircraft_code as "Код самолета", a2.airport_code as "Код аэропорта", a2.airport_name as "Название аэропорта", a2.city as "Город"
+from airports a2 
+join flights f on a2.airport_code = f.departure_airport
+where f.aircraft_code  = (
+	select a.aircraft_code
+	from aircrafts a
+	order by a."range" desc 
+	limit 1)
+
+Задание № 3
+
+Вывести 10 рейсов с максимальным временем задержки вылета
+-- Выводим в селект ID рейса, колонку реальное время вылета, колонку запланированное время вылета, вычитаем реальное время вылета и запланированное.
+-- Через оператор Where убираем значения null.
+-- Делаем сортировку по убыванию и получаем ID рейсов с максимальным временем задержки. Используем оператор limit чтобы вывести 10 рейсов. 
+
+select f.flight_id as "Id рейса", f.actual_departure as "Реальное время вылета", f.scheduled_departure as "Запланированное время вылета", f.actual_departure - f.scheduled_departure as "Время задержки"
+from flights f
+where f.actual_arrival is not null
+order by "Время задержки" desc 
+limit 10
+
+Задание № 4
+
+Были ли брони, по которым не были получены посадочные талоны?
+
+-- Джоин таблицу билеты, потому что таблицу с бронями и посадочными связывается через билет. 
+-- Использую (методом подбора) left join, при сортировке колонки boarding_no имеются null
+-- Через where сортирую только is null. Считаю количество через count получил 127 899
+-- Пример left join учебник. Моргунова. 
+
+select count(b.book_ref) as "Брони"
+from bookings b 
+join tickets t on t.book_ref = b.book_ref
+left join boarding_passes bp on bp.ticket_no = t.ticket_no
+where bp.boarding_no is null
+
+
+Задание № 5
+
+Найдите процентное соотношение перелетов по типам самолетов от общего количества.
+
+-- Необходимо найти общее количество рейсов. Через функцию count по id рейсов в таблице flights. В условии фактического времени вылета убираем null заворачиваем в дозапрос. 
+-- В основной запрос джоин таблицу самолетов по aircraft_code.
+-- Группировка по коду, типу самолета и по доле от наибольшей к меньшей. 
+-- См. учебник Моргунова. похожее задание по маршрутам.  
+
+select a.aircraft_code as "Код самолета", a.model as "Тип самолета", count(f.flight_id) as "Кол-во ресов", round(count(f.flight_id) / 
+	(select count(f.flight_id) 
+	from flights f 
+	where f.actual_departure is not null 
+	)::dec * 100,2) as "Доля"
+from aircrafts a 
+join flights f on f.aircraft_code = a.aircraft_code 
+where f.actual_departure is not null
+group by "Код самолета", "Тип самолета"
+order by "Доля" desc
+
+Задание № 6
+
+Между какими городами нет прямых рейсов?
+
+-- Необходимо создать представление городов, между которыми есть уникальные рейсы
+-- Первый джоин для получения города вылета 
+-- Второй джоин для получения города прилета
+-- В главном запросе необходимо получить декартово произведение городов при условии что они не равны через оператор <> 
+
+create view task_2 as
+select distinct a.city vilet, a2.city prilet
+from flights f 
+join airports a on f.departure_airport = a.airport_code 
+join airports a2 on f.arrival_airport = a2.airport_code
+ 
+select distinct a.city as "Вылет", a2.city "Прилет" 
+from airports a, airports a2 
+where a.city <> a2.city
+except 
+select * from task_2
+
+Задание № 7 
+
+Вычислите расстояние между аэропортами, связанными прямыми рейсами, сравните с допустимой максимальной дальностью перелетов  в самолетах, обслуживающих эти рейсы
+
+-- Джоин таблиц аэропортов 
+-- В поле результат расчитываются данные по условию рассчитанная дальность меньше дальности самолета
+-- Расстояние между городами по формуле из домашнего задания. 
+
+select distinct a2.airport_name "Город ИЗ", a1.airport_name "Город В", a."range" "Дальность", 
+	round((acos(sind(a2.latitude) * sind(a1.latitude) + cosd(a2.latitude) * cosd(a1.latitude) * cosd(a2.longitude - a1.longitude)) * 6371)::dec, 2) "Расстояние",		
+	case when 
+	a."range" <
+	acos(sind(a2.latitude) * sind(a1.latitude) + cosd(a2.latitude) * cosd(a1.latitude) * cosd(a2.longitude - a1.longitude)) * 6371 
+	then 'No'
+	else 'Yes'
+	end "Результат"
+from flights f
+join airports a2 on f.departure_airport = a2.airport_code
+join airports a1 on f.arrival_airport = a1.airport_code
+join aircrafts a on a.aircraft_code = f.aircraft_code
+
+ДОПОЛНИТЕЛЬНЫЕ ЗАДАНИЯ
+
+Задание № 1 
+
+Сколько суммарно каждый тип самолета провел в воздухе, если брать завершенные перелеты.
+
+-- Выбираем модели самолётов, затем находим при помощи агрегатной функции sum вычисляем сумму всех разностей между актуальным временем прилёта и актуальным временем вылета (эта разность и есть время в пути).
+-- Делаем джоин, чтобы сопоставить каждой модели из таблицы aircraft время в пути из таблицы flights.
+-- Дополнительно накладываем условие where на то, что рейс завершён, то есть его статус - "Arrived"
+-- Группируем по полю model, так как необходимо вывести суммарно по каждому типу самолётов.
+
+select a.model as "Тип самолета", sum(f.actual_arrival - f.actual_departure) as "Время" 
+from aircrafts a
+join flights f on a.aircraft_code = f.aircraft_code
+where status = 'Arrived'
+group by a.model
+
+Задание № 2
+
+Сколько было получено посадочных талонов по каждой брони
+
+-- Джоиним таблицу boarding_passes чтобы установить соотношение номеров бронирования и номеров посадочных талонов
+-- Находим при помощи агрегатной функции count и группировки group by количество посадочных талонов на каждое бронирование
+
+select t.book_ref, count(boarding_no)
+from tickets t
+join boarding_passes b on t.ticket_no = b.ticket_no
+group by t.book_ref
+
+Задание № 3
+
+Вывести общую сумму продаж по каждому классу билетов
+
+-- Выводим в селект каждый класс (fare_conditions), а также при помощи агрегатной функции sum, высчитываем суммарную стоимость.
+-- Группируем по полю fare_conditions, чтобы отобразить сумму продаж каждого класса.
+
+select t.fare_conditions as "Класс билетов", sum(t.amount) as "Сумма"
+from ticket_flights t
+group by fare_conditions
+
+Задание № 4
+
+Найти маршрут с наибольшим финансовым оборотом
+
+-- Маршрут есть одинаковые значения полей аэропорта отправления и аэропорта прибытия, поэтому в select записываем их
+-- Джоиним с таблицей ticket_flight, чтобы сопоставить маршрут со стоимостью
+-- Затем группируем по маршруту (аэропорт отправления, аэропорт прибытия)
+-- Сортируем при помощи order by ... desc в порядке убывания значения и при помощи limit 1 вырезаем первое (максимальное) значение.
+
+select f.departure_airport as "Вылет", f.arrival_airport as "Прилет", sum(t.amount) as "Сумма"
+from flights f
+join ticket_flights t on f.flight_id = t.flight_id
+group by f.departure_airport, f.arrival_airport
+order by "Сумма" desc 
+limit 1
+
+Задание № 5
+
+Найти наилучший и наихудший месяцы по бронированию билетов (количество и сумма).
+-- Внутри каждого подзапроса (все три идентичны) выводим количество бронирований по месяцам (для детализации до месяца импользовали функцию extract(month from)
+-- Также внутри подзапросов высчитали при помощи агрегатной функции sum суммарную стоимость брони
+-- Так как необходим наилучший и наихудший месяцы, то наложим условия на поле суммы условия, что оно должно равняться либо максимальному значению суммы из подзапроса, либо миниманльноу (либо-либо реализуется при помощи or в рамках where)
+
+select count_of_booking, sum 
+from (select count(extract(month from book_date)) as count_of_booking, sum(total_amount) 
+	from bookings.bookings 
+group by extract(month from book_date)) as foo 
+where 
+	(sum = (select max(sum) 
+		from (select count(extract(month from book_date)) as count_of_booking, sum(total_amount)
+			from bookings.bookings group by extract(month from book_date)) as wh)) 
+	or 
+	(sum = (select min(sum)
+		from (select count(extract(month from book_date)) as count_of_booking, sum(total_amount)
+			from bookings.bookings group by extract(month from book_date)) as wh2));
+
+Задание № 6
+
+Между какими городами пассажиры делали пересадки? Пересадкой считается нахождение пассажира в промежуточном аэропорту менее 24 часов.
+
+-- Соединим расширенную таблицу полётов саму с собой (в первой таблице возьмём поле аэропорт прибытия, во второй - аэропорт отправления, суть - это и есть транзитный аэропорт)
+-- При помощи where наложим условие, что время нахождения в транзитном аэропорту (разница между временем отправления из него и временем прибытия в него) меньше 24-х часов
+-- В результате выведем удовлетворябщие условиям город отправления - город прибытия.
+
+select f1.departure_city, f2.arrival_city
+from flights_v as f1
+join flights_v as f2 on f1.arrival_airport = f2.departure_airport 
+where (f2.actual_departure - f1.actual_arrival) < '24:00:00'
+group by cube(f1.departure_city, f2.arrival_city)
